@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>EcoConnect Events</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f5f7f9; color: #333; line-height: 1.6; padding: 20px; max-width: 1200px; margin: 0 auto; }
+    h1 { text-align: center; color: #2e8b57; margin: 20px 0; font-size: 2.5rem; }
+    h2 { color: #2e8b57; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 2px solid #4caf50; }
+    h3 { color: #3cb371; margin: 15px 0 10px; }
+    section { background: white; border-radius: 10px; padding: 20px; margin-bottom: 25px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); }
+    input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
+    button { background-color: #4caf50; color: white; border: none; padding: 12px 20px; margin: 10px 0; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background-color 0.3s; }
+    button:hover { background-color: #2e8b57; }
+    #events { margin: 15px 0; }
+    .event-item { background: #f0f8f0; padding: 12px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #4caf50; }
+    .status { padding: 10px; margin: 10px 0; border-radius: 5px; text-align: center; font-weight: bold; }
+    .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    .hidden { display: none; }
+    .flex-container { display: flex; flex-wrap: wrap; gap: 20px; }
+    .flex-container > section { flex: 1; min-width: 300px; }
+    .user-status { text-align: right; margin-bottom: 20px; font-weight: bold; color: #2e8b57; }
+  </style>
+</head>
+<body>
+  <div class="user-status" id="userStatus">Non connecté</div>
+  
+  <h1>🌍 EcoConnect Events</h1>
+  
+  <div class="flex-container">
+    <!-- Auth -->
+    <section>
+      <h2>Inscription</h2>
+      <input type="email" id="regEmail" placeholder="Email">
+      <input type="password" id="regPass" placeholder="Mot de passe">
+      <button onclick="register()">S’inscrire</button>
+      <div id="regStatus" class="status hidden"></div>
+    </section>
+
+    <section>
+      <h2>Connexion</h2>
+      <input type="email" id="logEmail" placeholder="Email">
+      <input type="password" id="logPass" placeholder="Mot de passe">
+      <button onclick="login()">Se connecter</button>
+      <div id="loginStatus" class="status hidden"></div>
+    </section>
+  </div>
+
+  <!-- Events -->
+  <section>
+    <h2>Événements</h2>
+    <div id="events">
+      <p>Chargement des événements...</p>
+    </div>
+
+    <h3>Ajouter un événement</h3>
+    <input type="text" id="eventTitle" placeholder="Titre">
+    <input type="date" id="eventDate">
+    <button onclick="addEvent()">Ajouter</button>
+    <div id="eventStatus" class="status hidden"></div>
+  </section>
+
+  <!-- Newsletter -->
+  <section>
+    <h2>Newsletter</h2>
+    <input type="email" id="newsEmail" placeholder="Votre email">
+    <button onclick="subscribe()">S’inscrire</button>
+    <div id="newsStatus" class="status hidden"></div>
+  </section>
+
+  <script>
+    const API = "http://localhost:5000/api";
+    let token = null;
+
+    function showStatus(elementId, message, isError = false) {
+      const statusElement = document.getElementById(elementId);
+      statusElement.textContent = message;
+      statusElement.className = isError ? 'status error' : 'status success';
+      statusElement.classList.remove('hidden');
+      setTimeout(() => statusElement.classList.add('hidden'), 5000);
+    }
+
+    // -------------------- Auth --------------------
+    async function register() {
+      try {
+        const email = document.getElementById("regEmail").value;
+        const password = document.getElementById("regPass").value;
+        if (!email || !password) return showStatus('regStatus', 'Veuillez remplir tous les champs', true);
+
+        const res = await fetch(`${API}/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || res.statusText);
+
+        showStatus('regStatus', data.msg || 'Inscription réussie!');
+        document.getElementById("regEmail").value = '';
+        document.getElementById("regPass").value = '';
+      } catch (err) {
+        showStatus('regStatus', `Erreur: ${err.message}`, true);
+      }
+    }
+
+    async function login() {
+      try {
+        const email = document.getElementById("logEmail").value;
+        const password = document.getElementById("logPass").value;
+        if (!email || !password) return showStatus('loginStatus', 'Veuillez remplir tous les champs', true);
+
+        const res = await fetch(`${API}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || res.statusText);
+
+        token = data.token;
+        document.getElementById('userStatus').textContent = `Connecté en tant que: ${email}`;
+        showStatus('loginStatus', 'Connexion réussie!');
+        loadEvents();
+
+        document.getElementById("logEmail").value = '';
+        document.getElementById("logPass").value = '';
+      } catch (err) {
+        showStatus('loginStatus', `Erreur: ${err.message}`, true);
+      }
+    }
+
+    // -------------------- Events --------------------
+    async function loadEvents() {
+      try {
+        const res = await fetch(`${API}/events/`);
+        const events = await res.json();
+        if (!res.ok) throw new Error(events.msg || res.statusText);
+
+        document.getElementById("events").innerHTML = events.length === 0
+          ? "<p>Aucun événement prévu pour le moment.</p>"
+          : events.map(e =>
+              `<div class="event-item"><strong>${e.title}</strong> - ${new Date(e.date).toLocaleDateString('fr-FR')}</div>`
+            ).join("");
+      } catch (err) {
+        document.getElementById("events").innerHTML = `<p class="error">Erreur: ${err.message}</p>`;
+      }
+    }
+
+    async function addEvent() {
+      try {
+        if (!token) return showStatus('eventStatus', 'Connecte-toi d’abord !', true);
+
+        const title = document.getElementById("eventTitle").value;
+        const date = document.getElementById("eventDate").value;
+        if (!title || !date) return showStatus('eventStatus', 'Veuillez remplir tous les champs', true);
+
+        const res = await fetch(`${API}/events/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ title, date })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || res.statusText);
+
+        showStatus('eventStatus', data.msg || 'Événement ajouté!');
+        document.getElementById("eventTitle").value = '';
+        document.getElementById("eventDate").value = '';
+        loadEvents();
+      } catch (err) {
+        showStatus('eventStatus', `Erreur: ${err.message}`, true);
+      }
+    }
+
+    // -------------------- Newsletter --------------------
+    async function subscribe() {
+      try {
+        const email = document.getElementById("newsEmail").value;
+        if (!email) return showStatus('newsStatus', 'Veuillez entrer une adresse email', true);
+
+        const res = await fetch(`${API}/newsletter/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || res.statusText);
+
+        showStatus('newsStatus', data.msg || 'Inscription réussie!');
+        document.getElementById("newsEmail").value = '';
+      } catch (err) {
+        showStatus('newsStatus', `Erreur: ${err.message}`, true);
+      }
+    }
+
+    // Charger les événements au démarrage
+    document.addEventListener('DOMContentLoaded', loadEvents);
+  </script>
+</body>
+</html>
